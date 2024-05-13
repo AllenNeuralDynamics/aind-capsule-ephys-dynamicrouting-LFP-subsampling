@@ -1,3 +1,3 @@
-# aind-capsule-template
+# aind-ephys-lfp-subsampling
 
-Basic structure of a capsule to be customized as needed.
+Capsule that performs temporal and spatial subsampling of Local Field Potential (LFP). Capsule outputs zarr file for each probe
