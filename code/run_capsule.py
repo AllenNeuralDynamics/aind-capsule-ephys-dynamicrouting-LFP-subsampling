@@ -14,7 +14,7 @@ RESULTS_PATH = pathlib.Path('/results')
 
 TEMPORAL_SUBSAMPLE_FACTOR = 2 
 SPAITIAL_CHANNEL_SUBSAMPLE_FACTOR = 4
-IS_AVERAGE_DIRECTION = False
+APPLY_AVERAGE_DIRECTION = "False"
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--TEMPORAL_SUBSAMPLE_FACTOR', help='Value to subsample time dimension of LFP')
@@ -49,7 +49,7 @@ def run():
         recording_channels_removed = recording.remove_channels(channel_ids_to_remove)
         resampled_recording = sip.resample(recording_channels_removed, int(recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
 
-        if IS_AVERAGE_DIRECTION:
+        if APPLY_AVERAGE_DIRECTION == "True":
             resampled_recording = sip.AverageAcrossDirectionRecording(resampled_recording)
 
         assert (len(resampled_recording.get_times()) == len(recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR
