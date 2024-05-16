@@ -7,35 +7,38 @@ import pathlib
 import spikeinterface as si
 import spikeinterface.preprocessing as sip
 import utils
+import xml.etree.ElementTree as et
 import argparse
-
+import zarr
+   
 DATA_PATH = pathlib.Path('/data')
 RESULTS_PATH = pathlib.Path('/results')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--temporal_factor', help='Value to subsample time dimension of LFP')
-parser.add_argument('--spatial_factor', help='Value to subsample channel dimension of LFP')
-parser.add_argument('--use_avg_direction', help='whether or not to apply average direction across same channel positions in y direction')
+parser.add_argument('--temporal_factor', help='Ratio of input samples to output samples in time', default=2)
+parser.add_argument('--spatial_factor', help='Distance between channels to keep', default=4)
+parser.add_argument('--use_avg_direction', help='Apply average across channels with same position in y direction', default='False')
+
+def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> None:
+    settings_xml_root = settings_xml_tree.getroot()
+    settings_xml_string = et.tostring(settings_xml_root)
+    with open(RESULTS_PATH / f'{session_id}_settings.xml', 'wb') as f:
+        f.write(settings_xml_string)
 
 def run():
     args = parser.parse_args()
-    
-    if args.temporal_factor is not None:
-        TEMPORAL_SUBSAMPLE_FACTOR = args.temporal_factor
-    else:
-        TEMPORAL_SUBSAMPLE_FACTOR = 2 
-    
-    if args.spatial_factor is not None:
-        SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = args.spatial_factor
-    else:
-        SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = 4
-    
-    if args.use_avg_direction is not None:
-        APPLY_AVERAGE_DIRECTION = args.use_avg_direction
-    else:
-        APPLY_AVERAGE_DIRECTION = "False"
+    TEMPORAL_SUBSAMPLE_FACTOR = args.temporal_factor
+    SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = args.spatial_factor
+    APPLY_AVERAGE_DIRECTION = args.use_avg_direction
 
     session_id = utils.parse_session_id()
+
+    settings_xml_path =  tuple(DATA_PATH.glob('*/ecephys_clipped/*/*.xml'))
+    if not settings_xml_path:
+        raise FileNotFoundError(f'No settings xml file in ecephys clipped folder for session {session_id}')
+
+    settings_xml_tree = et.parse(settings_xml_path[0].as_posix())
+    save_settings_xml(settings_xml_tree, session_id)
 
     zarr_lfp_paths = tuple(DATA_PATH.glob('*/ecephys_compressed/*-LFP.zarr'))
     if not zarr_lfp_paths:
@@ -63,9 +66,15 @@ def run():
         ), f"Applying {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR} channel stride resulted in mismatch downsampling {recording.get_num_channels()} channels and {resampled_recording.get_num_channels()} channels"
 
         result_output_path = (RESULTS_PATH / f'{session_id}_{probe}')
-        resampled_recording.save_to_zarr(result_output_path, overwrite=True)
-        utils.check_saved_subsampled_lfp_result(result_output_path, lfp_path, TEMPORAL_SUBSAMPLE_FACTOR, SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
+        if not result_output_path.exists():
+            result_output_path.mkdir()
+
+        resampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
+        zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), resampled_recording.get_times())
+
+        utils.check_saved_subsampled_lfp_result(result_output_path / f'{probe}_lfp_subsampled.zarr', lfp_path, TEMPORAL_SUBSAMPLE_FACTOR, SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
         print(f'Finished saving and checking subsampling result for session {session_id} and probe {probe}')
+        print()
 
 if __name__ == "__main__": 
     run()

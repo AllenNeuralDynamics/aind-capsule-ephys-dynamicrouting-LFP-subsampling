@@ -8,7 +8,7 @@ DATA_PATH = pathlib.Path('/data')
 def check_saved_subsampled_lfp_result(result_output_path: pathlib.Path, input_data_path: pathlib.Path, temporal_subsampling_factor: int, 
                                     spatial_channel_subsampling_factor: int) -> None:
     raw_lfp = zarr.open(input_data_path, mode='r')['traces_seg0']
-    subsampled_lfp = zarr.open(pathlib.Path(str(result_output_path) + '.zarr'), mode='r')['traces_seg0']
+    subsampled_lfp = zarr.open(result_output_path, mode='r')['traces_seg0']
 
     assert (subsampled_lfp.shape[0] == raw_lfp.shape[0] / temporal_subsampling_factor
     ), f"Temporal subsampling mismatch after saving to zarr. Got subsampled time samples {subsampled_lfp.shape[0]} given raw time samples {raw_lfp.shape[0]} and temporal factor {temporal_subsampling_factor}"
