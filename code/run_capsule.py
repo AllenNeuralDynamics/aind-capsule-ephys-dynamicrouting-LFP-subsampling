@@ -44,12 +44,13 @@ def run():
     if not zarr_lfp_paths:
         raise FileNotFoundError(f'No compressed lfp data found for session {session_id}')
 
+    print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, apply average direction {APPLY_AVERAGE_DIRECTION}')
     for lfp_path in zarr_lfp_paths:
         probe = lfp_path.stem[lfp_path.stem.index('Probe'):]
 
         print(f'Starting subsampling for session {session_id} and probe {probe}')
         recording = si.read_zarr(lfp_path)
-
+        
         channel_ids = recording.get_channel_ids()
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
         channel_ids_to_remove = [channel_ids[i] for i in range(0, len(channel_ids)) if channel_ids[i] not in channel_ids_to_keep]
@@ -69,10 +70,15 @@ def run():
         if not result_output_path.exists():
             result_output_path.mkdir()
 
-        resampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
-        zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), resampled_recording.get_times())
+        #resampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
+        #zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), resampled_recording.get_times())
 
-        utils.check_saved_subsampled_lfp_result(result_output_path / f'{probe}_lfp_subsampled.zarr', lfp_path, TEMPORAL_SUBSAMPLE_FACTOR, SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
+        utils.check_saved_subsampled_lfp_result(result_output_path / f'{probe}_lfp_subsampled.zarr', 
+                                            lfp_path, TEMPORAL_SUBSAMPLE_FACTOR, SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
+        
+        utils.plot_raw_and_subsampled_lfp(result_output_path / f'{probe}_lfp_subsampled.zarr', 
+                                    lfp_path, recording.get_times(), resampled_recording.get_times(), 
+                                    TEMPORAL_SUBSAMPLE_FACTOR, SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
         print(f'Finished saving and checking subsampling result for session {session_id} and probe {probe}')
         print()
 
