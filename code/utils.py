@@ -30,7 +30,7 @@ def plot_raw_and_subsampled_lfp(result_output_path: pathlib.Path, input_data_pat
     raw_times_interval = raw_times[start_frame:end_frame]
     subsampled_times_within = np.argwhere((subsampled_times >= raw_times_interval[0]) & (subsampled_times <= raw_times_interval[-1]))
     subsampled_times_to_plot = subsampled_times[subsampled_times_within]
-    subsampled_times_to_plot = subsampled_times_to_plot[:int((end_frame - start_frame) / 2)]
+    subsampled_times_to_plot = subsampled_times_to_plot[:int((end_frame - start_frame) / temporal_subsampling_factor)]
 
     plt.plot(raw_times_interval, raw_traces[start_frame:end_frame, raw_channel_index])
     plt.plot(subsampled_times_to_plot.T[0], 
