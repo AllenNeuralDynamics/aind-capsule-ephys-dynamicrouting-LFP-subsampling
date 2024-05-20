@@ -36,7 +36,7 @@ def plot_raw_and_subsampled_lfp(result_output_path: pathlib.Path, input_data_pat
     plt.plot(subsampled_times_to_plot.T[0], 
                 subsampled_traces[int(start_frame/temporal_subsampling_factor):int(end_frame/temporal_subsampling_factor), selected_channel_index])
     plt.legend(['Raw LFP', 'Subsampled LFP'])
-    plt.title(f'Raw and Subsampled LFP for temporal subsampling factor {temporal_subsampling_factor} and spatial subsampling factor {spatial_channel_subsampling_factor} from {start_frame}-{end_frame} ')
+    plt.title(f'Raw and Subsampled LFP')
     plt.xlabel('Time (s)')
     plt.savefig(result_output_path.parent / 'LFP_plot.png')
 
@@ -45,10 +45,10 @@ def check_saved_subsampled_lfp_result(result_output_path: pathlib.Path, input_da
     raw_lfp = zarr.open(input_data_path, mode='r')['traces_seg0']
     subsampled_lfp = zarr.open(result_output_path, mode='r')['traces_seg0']
 
-    assert (subsampled_lfp.shape[0] == raw_lfp.shape[0] / temporal_subsampling_factor
+    assert (subsampled_lfp.shape[0] == int(raw_lfp.shape[0] / temporal_subsampling_factor)
     ), f"Temporal subsampling mismatch after saving to zarr. Got subsampled time samples {subsampled_lfp.shape[0]} given raw time samples {raw_lfp.shape[0]} and temporal factor {temporal_subsampling_factor}"
 
-    assert (subsampled_lfp.shape[1] == raw_lfp.shape[1] / spatial_channel_subsampling_factor
+    assert (subsampled_lfp.shape[1] == int(raw_lfp.shape[1] / spatial_channel_subsampling_factor)
     ), f"Spatial subsampling mismatch after saving to zarr. Got subsampled number of channels {subsampled_lfp.shape[1]} given raw number of channels {raw_lfp.shape[1]} and spaitial factor {spatial_channel_subsampling_factor}"
 
 def parse_session_id() -> str:
