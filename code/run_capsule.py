@@ -30,7 +30,7 @@ def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> N
 def save_lfp_to_zarr(result_output_path: pathlib.Path, lfp_path: pathlib.Path, resampled_recording: sip.ResampleRecording,
                     temporal_subsampling_factor: int, spatial_channel_subsampling_factor: int, 
                     raw_times: np.ndarray, subsampled_times: np.ndarray, probe:str, session_id: str) -> None:
-    print(f'Starting saving subsampled lfp for session {session_id} and probe {probe}')
+    print(f'Started saving subsampled lfp for session {session_id} and probe {probe}')
     resampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
     zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), resampled_recording.get_times())
 
