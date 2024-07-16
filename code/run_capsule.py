@@ -17,9 +17,8 @@ DATA_PATH = pathlib.Path('/data')
 RESULTS_PATH = pathlib.Path('/results')
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--temporal_factor', help='Ratio of input samples to output samples in time', default=2)
-parser.add_argument('--spatial_factor', help='Distance between channels to keep', default=4)
-parser.add_argument('--use_avg_direction', help='Apply average across channels with same position in y direction', default='False')
+parser.add_argument('--lfp_subsampling_temporal_factor', help='Ratio of input samples to output samples in time. Default is 2', default=2)
+parser.add_argument('--lfp_subsampling_spatial_factor', help='Controls number of channels to skip in spatial subsampling. Default is 4', default=4)
 
 def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> None:
     settings_xml_root = settings_xml_tree.getroot()
@@ -46,7 +45,7 @@ def save_lfp_to_zarr(result_output_path: pathlib.Path, lfp_path: pathlib.Path, r
 
 def run():
     args = parser.parse_args()
-    TEMPORAL_SUBSAMPLE_FACTOR = args.temporal_factor
+    TEMPORAL_SUBSAMPLE_FACTOR = args.lfp_temporal_factor
     SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = args.spatial_factor
     APPLY_AVERAGE_DIRECTION = args.use_avg_direction
 
@@ -76,9 +75,6 @@ def run():
 
         recording_channels_removed = recording.remove_channels(channel_ids_to_remove)
         resampled_recording = sip.resample(recording_channels_removed, int(recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
-
-        if APPLY_AVERAGE_DIRECTION == "True":
-            resampled_recording = sip.AverageAcrossDirectionRecording(resampled_recording)
 
         assert (len(resampled_recording.get_times()) == int(len(recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR)
         ), f"Applying {TEMPORAL_SUBSAMPLE_FACTOR} temporal factor resulted in mismatch downsampling. Got {len(resampled_recording.get_times())} time samples given {len(recording.get_times())} raw time samples and factor {TEMPORAL_SUBSAMPLE_FACTOR}"
