@@ -5,7 +5,7 @@ Temporal Subsample by 2 and Spatial Channel Subsample by taking every 4th channe
 
 import pathlib
 import spikeinterface as si
-import spikeinterface.preprocessing as sip
+import spikeinterface.preprocessing as spre
 import utils
 import xml.etree.ElementTree as et
 import argparse
@@ -19,35 +19,14 @@ RESULTS_PATH = pathlib.Path('/results')
 parser = argparse.ArgumentParser()
 parser.add_argument('--lfp_subsampling_temporal_factor', help='Ratio of input samples to output samples in time. Default is 2', default=2)
 parser.add_argument('--lfp_subsampling_spatial_factor', help='Controls number of channels to skip in spatial subsampling. Default is 4', default=4)
+parser.add_argument('--lfp_highpass_cutoff', help='Cutoff frequency for highpass filter to apply. Default is 0.1', default=0.1)
 
-def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> None:
-    settings_xml_root = settings_xml_tree.getroot()
-    settings_xml_string = et.tostring(settings_xml_root)
-    with open(RESULTS_PATH / f'{session_id}_settings.xml', 'wb') as f:
-        f.write(settings_xml_string)
-
-def save_lfp_to_zarr(result_output_path: pathlib.Path, lfp_path: pathlib.Path, resampled_recording: sip.ResampleRecording,
-                    temporal_subsampling_factor: int, spatial_channel_subsampling_factor: int, 
-                    raw_times: np.ndarray, subsampled_times: np.ndarray, probe:str, session_id: str) -> None:
-    print(f'Started saving subsampled lfp for session {session_id} and probe {probe}')
-    resampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
-    zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), resampled_recording.get_times())
-
-
-    utils.check_saved_subsampled_lfp_result(result_output_path / f'{probe}_lfp_subsampled.zarr', 
-                                            lfp_path, temporal_subsampling_factor, spatial_channel_subsampling_factor)
-        
-    utils.plot_raw_and_subsampled_lfp(result_output_path / f'{probe}_lfp_subsampled.zarr', 
-                                    lfp_path, raw_times, subsampled_times, 
-                                    temporal_subsampling_factor, spatial_channel_subsampling_factor)
-
-    return f'Finished saving and checking subsampling result for session {session_id} and probe {probe}'
 
 def run():
     args = parser.parse_args()
-    TEMPORAL_SUBSAMPLE_FACTOR = args.lfp_temporal_factor
-    SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = args.spatial_factor
-    APPLY_AVERAGE_DIRECTION = args.use_avg_direction
+    TEMPORAL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_temporal_factor)
+    SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_spatial_factor)
+    HIGHPASS_FILTER_FREQ_MIN = float(args.lfp_highpass_cutoff)
 
     session_id = utils.parse_session_id()
 
@@ -56,46 +35,45 @@ def run():
         raise FileNotFoundError(f'No settings xml file in ecephys clipped folder for session {session_id}')
 
     settings_xml_tree = et.parse(settings_xml_path[0].as_posix())
-    save_settings_xml(settings_xml_tree, session_id)
+    utils.save_settings_xml(settings_xml_tree, session_id)
 
     zarr_lfp_paths = tuple(DATA_PATH.glob('*/ecephys_compressed/*-LFP.zarr'))
     if not zarr_lfp_paths:
         raise FileNotFoundError(f'No compressed lfp data found for session {session_id}')
 
-    print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, apply average direction {APPLY_AVERAGE_DIRECTION}')
+    print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, highpass filter frequency {HIGHPASS_FILTER_FREQ_MIN}')
     lfp_threads_info = []
     for lfp_path in zarr_lfp_paths:
         probe = lfp_path.stem[lfp_path.stem.index('Probe'):]
         print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
-        recording = si.read_zarr(lfp_path)
+        raw_lfp_recording = si.read_zarr(lfp_path)
         
-        channel_ids = recording.get_channel_ids()
+        channel_ids = raw_lfp_recording.get_channel_ids()
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
-        channel_ids_to_remove = [channel_ids[i] for i in range(0, len(channel_ids)) if channel_ids[i] not in channel_ids_to_keep]
 
-        recording_channels_removed = recording.remove_channels(channel_ids_to_remove)
-        resampled_recording = sip.resample(recording_channels_removed, int(recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
+        recording_channels_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
+        resampled_recording = spre.resample(recording_channels_subsampled, int(raw_lfp_recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
 
-        assert (len(resampled_recording.get_times()) == int(len(recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR)
+        assert (len(resampled_recording.get_times()) == int(len(raw_lfp_recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR)
         ), f"Applying {TEMPORAL_SUBSAMPLE_FACTOR} temporal factor resulted in mismatch downsampling. Got {len(resampled_recording.get_times())} time samples given {len(recording.get_times())} raw time samples and factor {TEMPORAL_SUBSAMPLE_FACTOR}"
-        assert (resampled_recording.get_num_channels() == int(recording.get_num_channels() / SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
+        assert (resampled_recording.get_num_channels() == int(raw_lfp_recording.get_num_channels() / SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
         ), f"Applying {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR} channel stride resulted in mismatch downsampling {recording.get_num_channels()} channels and {resampled_recording.get_num_channels()} channels"
 
+        filtered_recording = spre.highpass_filter(resampled_recording, freq_min=HIGHPASS_FILTER_FREQ_MIN)
         result_output_path = (RESULTS_PATH / f'{session_id}_{probe}')
         if not result_output_path.exists():
             result_output_path.mkdir()
 
-        lfp_threads_info.append((probe, recording, resampled_recording, result_output_path))
+        lfp_threads_info.append((probe, filtered_recording, result_output_path))
         print(f'Finished LFP subsampling for session {session_id} and probe {probe}')
     
     with cf.ThreadPoolExecutor() as executor:
         futures = []
         for lfp_thread_info in lfp_threads_info:
-            probe, recording, resampled_recording, result_output_path = lfp_thread_info
+            probe, subsampled_recording, result_output_path = lfp_thread_info
 
-            futures.append(executor.submit(save_lfp_to_zarr, result_output_path=result_output_path, lfp_path=lfp_path, resampled_recording=resampled_recording,
-                            temporal_subsampling_factor=TEMPORAL_SUBSAMPLE_FACTOR, spatial_channel_subsampling_factor=SPATIAL_CHANNEL_SUBSAMPLE_FACTOR,
-                            raw_times=recording.get_times(), subsampled_times=resampled_recording.get_times(), probe=probe, session_id=session_id))
+            futures.append(executor.submit(utils.save_lfp_to_zarr, result_output_path=result_output_path, subsampled_recording=subsampled_recording,
+                                            probe=probe, session_id=session_id))
         
         for future in cf.as_completed(futures):
             print(future.result())

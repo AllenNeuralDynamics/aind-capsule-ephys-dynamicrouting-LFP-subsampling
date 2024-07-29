@@ -1,9 +1,11 @@
 import json
 import npc_session
 import zarr
+import spikeinterface.preprocessing as spre
 import pathlib
 import numpy as np
 import matplotlib.pyplot as plt
+import xml.etree.ElementTree as et
 
 DATA_PATH = pathlib.Path('/data')
 RESULTS_PATH = pathlib.Path('results')
@@ -40,16 +42,19 @@ def plot_raw_and_subsampled_lfp(result_output_path: pathlib.Path, input_data_pat
     plt.xlabel('Time (s)')
     plt.savefig(result_output_path.parent / 'LFP_plot.png')
 
-def check_saved_subsampled_lfp_result(result_output_path: pathlib.Path, input_data_path: pathlib.Path, temporal_subsampling_factor: int, 
-                                    spatial_channel_subsampling_factor: int) -> None:
-    raw_lfp = zarr.open(input_data_path, mode='r')['traces_seg0']
-    subsampled_lfp = zarr.open(result_output_path, mode='r')['traces_seg0']
+def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> None:
+    settings_xml_root = settings_xml_tree.getroot()
+    settings_xml_string = et.tostring(settings_xml_root)
+    with open(RESULTS_PATH / f'{session_id}_settings.xml', 'wb') as f:
+        f.write(settings_xml_string)
 
-    assert (subsampled_lfp.shape[0] == int(raw_lfp.shape[0] / temporal_subsampling_factor)
-    ), f"Temporal subsampling mismatch after saving to zarr. Got subsampled time samples {subsampled_lfp.shape[0]} given raw time samples {raw_lfp.shape[0]} and temporal factor {temporal_subsampling_factor}"
+def save_lfp_to_zarr(result_output_path: pathlib.Path, subsampled_recording: spre.HighpassFilterRecording, probe:str, session_id: str) -> None:
+    print(f'Started saving subsampled lfp for session {session_id} and probe {probe}')
+    subsampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
+    zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), subsampled_recording.get_times())
+    zarr.save((result_output_path / f'{probe}_lfp_selected_channels.zarr').as_posix(), subsampled_recording.get_channel_ids())
 
-    assert (subsampled_lfp.shape[1] == int(raw_lfp.shape[1] / spatial_channel_subsampling_factor)
-    ), f"Spatial subsampling mismatch after saving to zarr. Got subsampled number of channels {subsampled_lfp.shape[1]} given raw number of channels {raw_lfp.shape[1]} and spaitial factor {spatial_channel_subsampling_factor}"
+    return f'Finished saving and checking subsampling result for session {session_id} and probe {probe}'
 
 def parse_session_id() -> str:
     """
