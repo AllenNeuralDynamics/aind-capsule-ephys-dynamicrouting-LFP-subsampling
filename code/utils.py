@@ -54,7 +54,7 @@ def save_lfp_to_zarr(result_output_path: pathlib.Path, subsampled_recording: spr
     zarr.save((result_output_path / f'{probe}_lfp_time_samples.zarr').as_posix(), subsampled_recording.get_times())
     zarr.save((result_output_path / f'{probe}_lfp_selected_channels.zarr').as_posix(), subsampled_recording.get_channel_ids())
 
-    return f'Finished saving and checking subsampling result for session {session_id} and probe {probe}'
+    return f'Finished saving LFP subsampling result for session {session_id} and probe {probe}'
 
 def parse_session_id() -> str:
     """
