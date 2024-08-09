@@ -12,6 +12,8 @@ import argparse
 import numpy as np
 import zarr
 import concurrent.futures as cf
+import npc_sessions
+import npc_session
    
 DATA_PATH = pathlib.Path('/data')
 RESULTS_PATH = pathlib.Path('/results')
@@ -29,6 +31,8 @@ def run():
     HIGHPASS_FILTER_FREQ_MIN = float(args.lfp_highpass_cutoff)
 
     session_id = utils.parse_session_id()
+    session = npc_sessions.DynamicRoutingSession(session_id)
+    electrodes = session.electrodes[:]
 
     settings_xml_path =  tuple(DATA_PATH.glob('*/ecephys_clipped/*/*.xml'))
     if not settings_xml_path:
@@ -45,10 +49,26 @@ def run():
     lfp_threads_info = []
     for lfp_path in zarr_lfp_paths:
         probe = lfp_path.stem[lfp_path.stem.index('Probe'):]
-        print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
+
+        electrodes_probe = electrodes[electrodes['group_name'] == f'probe{npc_session.ProbeRecord(probe)}']
         raw_lfp_recording = si.read_zarr(lfp_path)
-        
         channel_ids = raw_lfp_recording.get_channel_ids()
+
+        if len(electrodes_probe) != 0:
+            surface_index = electrodes_probe[(electrodes_probe['structure'] == 'out of brain') | (electrodes_probe['structure'] == 'root')]['channel'].min()
+            reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
+            reference_channel_ids = channel_ids[reference_channel_indices]
+            # common median reference to channels out of brain
+            recording_lfp = spre.common_reference(
+                recording_lfp,
+                reference="global",
+                ref_channel_ids=reference_channel_ids,
+            )
+        else:
+            print(f'No electrode ccf registration coordinates for session {session_id} and probe {probe}. Skipping CMR for now')
+
+        print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
+        
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
 
         recording_channels_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)

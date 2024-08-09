@@ -51,7 +51,7 @@ def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> N
 def save_lfp_to_zarr(result_output_path: pathlib.Path, subsampled_recording: spre.HighpassFilterRecording, probe:str, session_id: str) -> None:
     print(f'Started saving subsampled lfp for session {session_id} and probe {probe}')
     subsampled_recording.save_to_zarr(result_output_path / f'{probe}_lfp_subsampled', overwrite=True)
-    zarr.save((result_output_path / f'{probe}_lfp_timestamps.zarr').as_posix(), subsampled_recording.get_times())
+    zarr.save((result_output_path / f'{probe}_lfp_time_samples.zarr').as_posix(), subsampled_recording.get_times())
     zarr.save((result_output_path / f'{probe}_lfp_selected_channels.zarr').as_posix(), subsampled_recording.get_channel_ids())
 
     return f'Finished saving and checking subsampling result for session {session_id} and probe {probe}'

@@ -1,0 +1,13 @@
+environment_version: 1
+credentials:
+- type: aws
+  id: D9pZbRPEbgZZs5Kl
+  description: Aws latest creds
+  access_key_id: AWS_ACCESS_KEY_ID
+  secret_access_key: AWS_SECRET_ACCESS_KEY
+  region: AWS_DEFAULT_REGION
+- type: api-key
+  id: lxgg6X2iJkUUUYOS
+  description: Code ocean
+  key: API_KEY
+  secret: API_SECRET
