@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import xml.etree.ElementTree as et
 
 DATA_PATH = pathlib.Path('/data')
-RESULTS_PATH = pathlib.Path('results')
+RESULTS_PATH = pathlib.Path('/results')
 
 def plot_raw_and_subsampled_lfp(result_output_path: pathlib.Path, input_data_path: pathlib.Path, raw_times: np.ndarray,
         subsampled_times: np.ndarray, temporal_subsampling_factor: int, spatial_channel_subsampling_factor: int) -> None:
@@ -40,7 +40,7 @@ def plot_raw_and_subsampled_lfp(result_output_path: pathlib.Path, input_data_pat
     plt.legend(['Raw LFP', 'Subsampled LFP'])
     plt.title(f'Raw and Subsampled LFP')
     plt.xlabel('Time (s)')
-    plt.savefig(result_output_path.parent / 'LFP_plot.png')
+    plt.savefig(RESULTS_PATH / 'LFP_plot.png')
 
 def save_settings_xml(settings_xml_tree: et.ElementTree(), session_id: str) -> None:
     settings_xml_root = settings_xml_tree.getroot()
