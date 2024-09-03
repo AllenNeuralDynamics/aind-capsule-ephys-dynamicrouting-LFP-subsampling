@@ -55,6 +55,7 @@ def run():
 
         print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
         
+        # TODO: add surface channel rereferencing
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
 
         recording_channels_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
