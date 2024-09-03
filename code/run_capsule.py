@@ -23,6 +23,11 @@ parser.add_argument('--lfp_subsampling_temporal_factor', help='Ratio of input sa
 parser.add_argument('--lfp_subsampling_spatial_factor', help='Controls number of channels to skip in spatial subsampling. Default is 4', default=4)
 parser.add_argument('--lfp_highpass_cutoff', help='Cutoff frequency for highpass filter to apply. Default is 0.1', default=0.1)
 
+lfp_surface_channel_help = "Index of surface channel (e.g. index 0 corresponds to channel 1) of probe for common median referencing for probes in agar. Pass in as JSON string where key is probe and value is surface channel (e.g. \"{'ProbeA': 350, 'ProbeB': 360}\")"
+parser.add_argument(
+    "--surface_channel_agar_probes_indices", help=lfp_surface_channel_help, default="", type=str
+)
+
 
 def run():
     args = parser.parse_args()
@@ -32,10 +37,10 @@ def run():
 
     raw_session_path = tuple(DATA_PATH.glob('*'))
     if not raw_session_path:
-        raise FileNotFoundError('No raw data asset attached')
+        raise FileNotFoundError('No data asset attached')
     
     if len(raw_session_path) > 1:
-        raise ValueError('More than one raw data asset is attached. Check assets and remove irrelevant ones')
+        raise ValueError('More than one data asset is attached. Check assets and remove irrelevant ones')
 
     session_id = npc_session.extract_aind_session_id(raw_session_path[0].stem)
 
