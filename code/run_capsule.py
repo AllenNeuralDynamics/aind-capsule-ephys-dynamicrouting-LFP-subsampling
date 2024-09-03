@@ -1,6 +1,7 @@
 """
 Capsule that performs temporal and spatial subsampling of LFP data. Default behavior ported from allen sdk.
 Temporal Subsample by 2 and Spatial Channel Subsample by taking every 4th channel. Can overwrite these with input args
+Saves output to zarr for each probe
 """
 
 import pathlib
@@ -29,9 +30,14 @@ def run():
     SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_spatial_factor)
     HIGHPASS_FILTER_FREQ_MIN = float(args.lfp_highpass_cutoff)
 
-    session_id = utils.parse_session_id()
-    session = npc_sessions.DynamicRoutingSession(session_id)
-    electrodes = session.electrodes[:]
+    raw_session_path = tuple(DATA_PATH.glob('*'))
+    if not raw_session_path:
+        raise FileNotFoundError('No raw data asset attached')
+    
+    if len(raw_session_path) > 1:
+        raise ValueError('More than one raw data asset is attached. Check assets and remove irrelevant ones')
+
+    session_id = npc_session.extract_aind_session_id(raw_session_path[0].stem)
 
     settings_xml_path =  tuple(DATA_PATH.glob('*/ecephys_clipped/*/*.xml'))
     if not settings_xml_path:
@@ -47,7 +53,7 @@ def run():
     print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, highpass filter frequency {HIGHPASS_FILTER_FREQ_MIN}')
     lfp_threads_info = []
     for lfp_path in zarr_lfp_paths:
-        probe = lfp_path.stem[lfp_path.stem.index('Probe'):]
+        probe = f'Probe{npc_session.ProbeRecord(lfp_path)}'
 
         raw_lfp_recording = si.read_zarr(lfp_path)
         channel_ids = raw_lfp_recording.get_channel_ids()
@@ -57,15 +63,15 @@ def run():
         # TODO: add surface channel rereferencing
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
 
-        recording_channels_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
-        resampled_recording = spre.resample(recording_channels_subsampled, int(raw_lfp_recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
+        recording_spatial_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
+        recording_spatial_time_subsampled = spre.resample(recording_spatial_subsampled, int(raw_lfp_recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
 
-        assert (len(resampled_recording.get_times()) == int(len(raw_lfp_recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR)
-        ), f"Applying {TEMPORAL_SUBSAMPLE_FACTOR} temporal factor resulted in mismatch downsampling. Got {len(resampled_recording.get_times())} time samples given {len(recording.get_times())} raw time samples and factor {TEMPORAL_SUBSAMPLE_FACTOR}"
-        assert (resampled_recording.get_num_channels() == int(raw_lfp_recording.get_num_channels() / SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
-        ), f"Applying {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR} channel stride resulted in mismatch downsampling {recording.get_num_channels()} channels and {resampled_recording.get_num_channels()} channels"
+        assert (len(recording_spatial_time_subsampled.get_times()) == int(len(raw_lfp_recording.get_times()) / TEMPORAL_SUBSAMPLE_FACTOR)
+        ), f"Applying {TEMPORAL_SUBSAMPLE_FACTOR} temporal factor resulted in mismatch downsampling. Got {len(recording_spatial_time_subsampled.get_times())} time samples given {len(recording.get_times())} raw time samples and factor {TEMPORAL_SUBSAMPLE_FACTOR}"
+        assert (recording_spatial_time_subsampled.get_num_channels() == int(raw_lfp_recording.get_num_channels() / SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)
+        ), f"Applying {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR} channel stride resulted in mismatch downsampling {recording.get_num_channels()} channels and {recording_spatial_time_subsampled.get_num_channels()} channels"
 
-        filtered_recording = spre.highpass_filter(resampled_recording, freq_min=HIGHPASS_FILTER_FREQ_MIN)
+        filtered_recording = spre.highpass_filter(recording_spatial_time_subsampled, freq_min=HIGHPASS_FILTER_FREQ_MIN)
         result_output_path = (RESULTS_PATH / f'{session_id}_{probe}')
         if not result_output_path.exists():
             result_output_path.mkdir()
