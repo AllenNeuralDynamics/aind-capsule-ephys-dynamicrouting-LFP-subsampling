@@ -1,7 +1,6 @@
 """
-Capsule that performs temporal and spatial subsampling of LFP data. Default behavior ported from allen sdk.
-Temporal Subsample by 2 and Spatial Channel Subsample by taking every 4th channel. Can overwrite these with input args
-Saves output to zarr for each probe
+Capsule that performs temporal and spatial subsampling of LFP data.
+Saves output to zarr files for each probe
 """
 
 import pathlib
