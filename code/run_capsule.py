@@ -12,7 +12,6 @@ import argparse
 import numpy as np
 import zarr
 import concurrent.futures as cf
-import npc_sessions
 import npc_session
    
 DATA_PATH = pathlib.Path('/data')
@@ -54,7 +53,7 @@ def run():
         channel_ids = raw_lfp_recording.get_channel_ids()
 
         print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
-        
+
         # TODO: add surface channel rereferencing
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
 
