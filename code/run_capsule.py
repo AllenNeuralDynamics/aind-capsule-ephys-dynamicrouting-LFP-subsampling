@@ -33,6 +33,12 @@ def run():
     TEMPORAL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_temporal_factor)
     SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_spatial_factor)
     HIGHPASS_FILTER_FREQ_MIN = float(args.lfp_highpass_cutoff)
+    SURFACE_CHANNEL_AGAR_INDICES = args.surface_channel_agar_probes_indices
+
+    if SURFACE_CHANNEL_AGAR_INDICES != "":
+        SURFACE_CHANNEL_AGAR_PROBES_INDICES = json.loads(SURFACE_CHANNEL_AGAR_PROBES_INDICES)
+    else:
+        SURFACE_CHANNEL_AGAR_PROBES_INDICES = None
 
     raw_session_path = tuple(DATA_PATH.glob('*'))
     if not raw_session_path:
@@ -64,7 +70,24 @@ def run():
 
         print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
 
-        # TODO: add surface channel rereferencing
+        # re-reference only for agar - subtract median of channels out of brain using surface channel index arg
+        # similar processing to allensdk
+        if SURFACE_CHANNEL_AGAR_PROBES_INDICES is not None:
+            if probe in SURFACE_CHANNEL_AGAR_PROBES_INDICES:
+                print(f'Common median referencing for probe {probe}')
+                surface_channel_index = SURFACE_CHANNEL_AGAR_PROBES_INDICES[probe]
+                # get indices of channels out of brain including surface channel
+                reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
+                reference_channel_ids = channel_ids[reference_channel_indices]
+                # common median reference to channels out of brain
+                recording_lfp = spre.common_reference(
+                    recording_lfp,
+                    reference="global",
+                    ref_channel_ids=reference_channel_ids,
+                )
+            else:
+                print(f'Could not find {probe} in surface channel dictionary')
+
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
 
         recording_spatial_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
