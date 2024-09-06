@@ -13,6 +13,7 @@ import numpy as np
 import zarr
 import concurrent.futures as cf
 import npc_session
+import npc_sessions
    
 DATA_PATH = pathlib.Path('/data')
 RESULTS_PATH = pathlib.Path('/results')
@@ -62,6 +63,14 @@ def run():
 
     print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, highpass filter frequency {HIGHPASS_FILTER_FREQ_MIN}')
     lfp_threads_info = []
+
+    electrodes = None
+    
+    try:
+        electrodes = npc_sessions.DynamicRoutingSession(session_id).electrodes[:]
+    except FileNotFoundError:
+        print(f'{session_id} has no ccf annotation. Skipping median subtraction')
+    
     for lfp_path in zarr_lfp_paths:
         probe = f'Probe{npc_session.ProbeRecord(lfp_path)}'
 
@@ -72,25 +81,49 @@ def run():
 
         # re-reference only for agar - subtract median of channels out of brain using surface channel index arg
         # similar processing to allensdk
-        if SURFACE_CHANNEL_AGAR_PROBES_INDICES is not None:
-            if probe in SURFACE_CHANNEL_AGAR_PROBES_INDICES:
-                print(f'Common median referencing for probe {probe}')
-                surface_channel_index = SURFACE_CHANNEL_AGAR_PROBES_INDICES[probe]
-                # get indices of channels out of brain including surface channel
-                reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
-                reference_channel_ids = channel_ids[reference_channel_indices]
-                # common median reference to channels out of brain
-                recording_lfp = spre.common_reference(
-                    recording_lfp,
-                    reference="global",
-                    ref_channel_ids=reference_channel_ids,
-                )
-            else:
-                print(f'Could not find {probe} in surface channel dictionary')
+        if SURFACE_CHANNEL_AGAR_PROBES_INDICES is None:
+            if electrodes is None:
+                print(f'No ccf annotations. Skipping {probe}')
+                continue
+
+            print(f'Common median referecing using out of brain channels from ccf annotations for {probe}')
+            electrodes_probe = electrodes[electrodes['group_name'] == probe[0].lower() + probe[1:]]
+
+            if len(electrodes_probe) == 0:
+                print(f'No ccf annotations for {probe}. Thus, no surface channel. Skipping')
+                continue
+
+            surface_channel_index = electrodes_probe[electrodes_probe['structure'] != 'out of brain']['channel'].max() + 10
+
+            reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
+            reference_channel_ids = channel_ids[reference_channel_indices]
+            # common median reference to channels out of brain
+            recording_lfp_cmr = spre.common_reference(
+                raw_lfp_recording,
+                reference="global",
+                ref_channel_ids=reference_channel_ids.tolist(),
+            )
+
+        else:
+            if probe not in SURFACE_CHANNEL_AGAR_PROBES_INDICES:
+                print(f'Could not find {probe} in surface channel dictionary. Skipping')
+                continue
+
+            print(f'Common median referencing for probe {probe}')
+            surface_channel_index = SURFACE_CHANNEL_AGAR_PROBES_INDICES[probe]
+            # get indices of channels out of brain including surface channel
+            reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
+            reference_channel_ids = channel_ids[reference_channel_indices]
+            # common median reference to channels out of brain
+            recording_lfp_cmr = spre.common_reference(
+                raw_lfp_recording,
+                reference="global",
+                ref_channel_ids=reference_channel_ids.tolist(),
+            )
 
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
+        recording_spatial_subsampled = recording_lfp_cmr.channel_slice(channel_ids_to_keep)
 
-        recording_spatial_subsampled = raw_lfp_recording.channel_slice(channel_ids_to_keep)
         recording_spatial_time_subsampled = spre.resample(recording_spatial_subsampled, int(raw_lfp_recording.sampling_frequency / TEMPORAL_SUBSAMPLE_FACTOR))
 
         # might run into rounding issues checking shapes
