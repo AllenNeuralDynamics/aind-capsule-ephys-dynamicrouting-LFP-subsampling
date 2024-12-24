@@ -1,5 +1,7 @@
+from __future__ import annotations
 import json
 import npc_session
+import npc_lims
 import zarr
 import spikeinterface.preprocessing as spre
 import pathlib
@@ -43,6 +45,20 @@ def parse_session_id() -> str:
     
     return session_id
 
+def is_duragel(session: str | npc_session.SessionRecord) -> bool:
+    session = npc_session.SessionRecord(session)
+    target_db_connection = npc_lims.get_probe_target_db()
+
+    cursor = target_db_connection.execute(
+        f"SELECT * FROM session_metadata sm WHERE sm.session = '{session.subject}_{session.date}'"
+    )
+    metadata = cursor.fetchall()
+    if len(metadata) == 0:
+        raise ValueError(f'{session=} has no information in targeting database. Check with RAs to see if needs to be entered')
+    
+    info = metadata[0]
+    return bool(info['is_duragel'])
+
 def get_data_description_dict() -> dict:
     session_id = parse_session_id()
 
@@ -69,7 +85,7 @@ def get_processing_dict(start_date_time: datetime.datetime, end_date_time: datet
     data_processing_dict["output_location"] = RESULTS_PATH.as_posix()
     data_processing_dict["code_url"] = "https://github.com/AllenNeuralDynamics/aind-capsule-ephys-dynamicrouting-LFP-subsampling"
     data_processing_dict["notes"] = "LFP Subsampling"
-    data_processing_dict["parameters"] = {}
+    data_processing_dict["parameters"] = parameters
     data_processing_dict["outputs"] = {}
 
     return data_processing_dict

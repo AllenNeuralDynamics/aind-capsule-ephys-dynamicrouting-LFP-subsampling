@@ -30,27 +30,14 @@ parser.add_argument('--lfp_subsampling_temporal_factor', help='Ratio of input sa
 parser.add_argument('--lfp_subsampling_spatial_factor', help='Controls number of channels to skip in spatial subsampling. Default is 4', default=4)
 parser.add_argument('--lfp_highpass_cutoff', help='Cutoff frequency for highpass filter to apply. Default is 0.1', default=0.1)
 
-lfp_surface_channel_help = "Index of surface channel (e.g. index 0 corresponds to channel 1) of probe for common median referencing for probes in agar. Pass in as JSON string where key is probe and value is surface channel (e.g. \"{'ProbeA': 350, 'ProbeB': 360}\")"
-parser.add_argument(
-    "--surface_channel_agar_probes_indices", help=lfp_surface_channel_help, default="", type=str
-)
-
-
 def run():
     start_date_time = datetime.datetime.now()
     args = parser.parse_args()
     TEMPORAL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_temporal_factor)
     SPATIAL_CHANNEL_SUBSAMPLE_FACTOR = int(args.lfp_subsampling_spatial_factor)
     HIGHPASS_FILTER_FREQ_MIN = float(args.lfp_highpass_cutoff)
-    SURFACE_CHANNEL_AGAR_INDICES = args.surface_channel_agar_probes_indices
 
     processing_parameters = {'Temporal_subsampling_factor': TEMPORAL_SUBSAMPLE_FACTOR, 'Spatial_subsampling_factor': SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}
-    if SURFACE_CHANNEL_AGAR_INDICES != "":
-        SURFACE_CHANNEL_AGAR_PROBES_INDICES = json.loads(SURFACE_CHANNEL_AGAR_PROBES_INDICES)
-        processing_parameters['surface_channel_indices'] = SURFACE_CHANNEL_AGAR_PROBES_INDICES
-    else:
-        SURFACE_CHANNEL_AGAR_PROBES_INDICES = None
-
     session_json_path = tuple(utils.DATA_PATH.glob('*/session.json'))
     procedures_json_path = tuple(utils.DATA_PATH.glob('*/procedures.json'))
     subject_json_path = tuple(utils.DATA_PATH.glob('*/subject.json'))
@@ -87,23 +74,24 @@ def run():
         raise ValueError('More than one data asset is attached. Check assets and remove irrelevant ones')
 
     session_id = npc_session.extract_aind_session_id(raw_session_path[0].stem)
+    is_duragel = utils.is_duragel(session_id)
 
-    # TODO: remove this and copy settings xml, or keep and figure out merge if mutiple
     settings_xml_path =  tuple(DATA_PATH.glob('*/ecephys_clipped/*/*.xml'))
     if not settings_xml_path:
         raise FileNotFoundError(f'No settings xml file in ecephys clipped folder for session {session_id}')
 
     shutil.copy(settings_xml_path[0], utils.RESULTS_PATH / f'{session_id}_settings.xml')
 
-    zarr_lfp_paths = tuple(DATA_PATH.glob('*/ecephys_compressed/*-LFP.zarr'))
+    zarr_lfp_paths = tuple(DATA_PATH.glob('*/ecephys/ecephys_compressed/*-LFP.zarr'))
     if not zarr_lfp_paths:
-        raise FileNotFoundError(f'No compressed lfp data found for session {session_id}')
+        zarr_lfp_paths = tuple(DATA_PATH.glob('*/ecephys_compressed/*-LFP.zarr')) # try old way and then raise
+        if not zarr_lfp_paths:
+            raise FileNotFoundError(f'No compressed lfp data found for session {session_id}')
 
     print(f'Starting LFP Subsampling with parameters: temporal factor {TEMPORAL_SUBSAMPLE_FACTOR}, spatial factor {SPATIAL_CHANNEL_SUBSAMPLE_FACTOR}, highpass filter frequency {HIGHPASS_FILTER_FREQ_MIN}')
     lfp_threads_info = []
 
     electrodes = None
-    
     try:
         electrodes = npc_sessions.DynamicRoutingSession(session_id).electrodes[:]
     except FileNotFoundError:
@@ -117,14 +105,13 @@ def run():
 
         print(f'Starting LFP subsampling for session {session_id} and probe {probe}')
 
-        # re-reference only for agar - subtract median of channels out of brain using surface channel index arg
-        # similar processing to allensdk
-        if SURFACE_CHANNEL_AGAR_PROBES_INDICES is None:
+        if not is_duragel:
+            # re-reference only for agar - subtract median of channels out of brain using surface channel index arg
+            # similar processing to allensdk
             if electrodes is None:
                 print(f'No ccf annotations for surface channel for common median referencing. Skipping {probe}')
                 continue
 
-            print(f'Common median referecing using out of brain channels from ccf annotations for {probe}')
             electrodes_probe = electrodes[electrodes['group_name'] == probe[0].lower() + probe[1:]]
 
             if len(electrodes_probe) == 0:
@@ -132,7 +119,8 @@ def run():
                 continue
 
             surface_channel_index = electrodes_probe[electrodes_probe['structure'] != 'out of brain']['channel'].max() + 10
-
+            processing_parameters[f'Surface_channel_reference_index_{probe}'] = surface_channel_index
+            print(f'Common median referecing using out of brain channels from ccf annotations for {probe} with surface index {surface_channel_index}')
             reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
             reference_channel_ids = channel_ids[reference_channel_indices]
             # common median reference to channels out of brain
@@ -142,22 +130,6 @@ def run():
                 ref_channel_ids=reference_channel_ids.tolist(),
             )
 
-        else:
-            if probe not in SURFACE_CHANNEL_AGAR_PROBES_INDICES:
-                print(f'Could not find {probe} in surface channel dictionary. Skipping')
-                continue
-
-            print(f'Common median referencing for probe {probe}')
-            surface_channel_index = SURFACE_CHANNEL_AGAR_PROBES_INDICES[probe]
-            # get indices of channels out of brain including surface channel
-            reference_channel_indices = np.arange(surface_channel_index, len(channel_ids))
-            reference_channel_ids = channel_ids[reference_channel_indices]
-            # common median reference to channels out of brain
-            recording_lfp_cmr = spre.common_reference(
-                raw_lfp_recording,
-                reference="global",
-                ref_channel_ids=reference_channel_ids.tolist(),
-            )
 
         channel_ids_to_keep = [channel_ids[i] for i in range(0, len(channel_ids), SPATIAL_CHANNEL_SUBSAMPLE_FACTOR)] 
         recording_spatial_subsampled = recording_lfp_cmr.channel_slice(channel_ids_to_keep)
